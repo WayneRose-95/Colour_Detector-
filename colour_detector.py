@@ -1,111 +1,147 @@
-import cv2
-import numpy as np
-import pandas as pd
 import argparse
+import cv2
+import pandas as pd
 
-'''
-Positives: 
+class ColorDetector:
+    """
+    A class for detecting colors in an image using mouse clicks.
+    """
 
-+ Use of flags allow user input 
+    def __init__(self, image_path, csv_path='colors.csv'):
+        """
+        Initialize the ColorDetector instance.
 
-+ Uses pandas in intricate way to calculate colour distances 
+        Args:
+            image_path (str): Path to the input image.
+            csv_path (str, optional): Path to the CSV file containing color data. Defaults to 'colors.csv'.
+        """
+        self.img = cv2.imread(image_path)
+        self.clicked = False
+        self.current_red = self.current_green = self.current_blue = self.xpos = self.ypos = 0
+        self.csv = pd.read_csv(csv_path, names=["color", "color_name", "hex", "R", "G", "B"], header=None)
+        self.setup_window()
 
-+ UI when using program is clear for test image. 
-
-
-Negatives 
-
-- Variable names are awkward. Need to change those 
-
-- Program doesn't show the hexcode!? 
-
-- Not enough OOP, but can easily change that :) 
-
-'''
-
-
-
-# Upon intialisation of the class, the csv_file and the image_path will be read. 
-
-class ColourDetector:
-    
-    r = g = b = xpos = ypos = 0 
-
-    def __init__(self, image_path, csv_file_name):
-        # Reading the image with opencv
-        self.image = cv2.imread(image_path)
-        self.hovered = bool
-        index = ["color", "color_name", "hex", "R", "G", "B"]
-        # Reading csv file with pandas and giving names to each column
-        self.csv = pd.read_csv(csv_file_name, names=index, header=None)
-        # Creating argument parser to take image path from command line
-        ap = argparse.ArgumentParser()
-        ap.add_argument('-i', '--image', required=True, help="Image Path")
-        args = vars(ap.parse_args())
-        print(args)
-        image_path = args['image']
-
-
-    # function to calculate minimum distance from all colors and get the most matching color
-    def getColorName(self, R, G, B):
-        minimum = 10000
-        for i in range(len(self.csv)):
-            distance = abs(R - int(self.csv.loc[i, "R"])) + abs(G - int(self.csv.loc[i, "G"])) + abs(B - int(self.csv.loc[i, "B"]))
-            if (distance <= minimum):
-                minimum = distance
-                color_name = self.csv.loc[i, "color_name"]
-                print(color_name)
-        return color_name
-
-
-    # function to get x,y coordinates of mouse hover
-    def draw_function(self, event, x, y, flags=None, param=None):
-        if event == cv2.EVENT_MOUSEMOVE:
-            global b, g, r, xpos, ypos, hovered
-            hovered = True
-            xpos = x
-            ypos = y
-            b, g, r = self.image[y, x]
-            b = int(b)
-            g = int(g)
-            r = int(r)
-            print(b, g, r, xpos, ypos)
-    
-    #     cv2.setMouseCallback('image', self.draw_function(cv2.EVENT_MOUSEMOVE, x, y))
-    #     TypeError: on_mouse must be callable
-
-    def open_window(self, x, y, flags=None, param=None):
+    def setup_window(self):
+        """
+        Set up the OpenCV window and mouse callback.
+        """
         cv2.namedWindow('image')
         cv2.setMouseCallback('image', self.draw_function)
 
-        while (cv2.getWindowProperty('image', cv2.WND_PROP_VISIBLE) >= 1):
+    def get_color_name(self, r, g, b):
+        """
+        Get the closest color name based on RGB values.
 
-            cv2.imshow("image", self.image)
-            hovered = False 
-            if hovered:
-                # cv2.rectangle(image, startpoint, endpoint, color, thickness)-1 fills entire rectangle
-                cv2.rectangle(self.image, (20, 20), (750, 60), (b, g, r), -1)
+        Args:
+            r (int): Red component value.
+            g (int): Green component value.
+            b (int): Blue component value.
 
-                # Creating text string to display( Color name and RGB values )
-                text = self.getColorName(r, g, b) + ' R=' + str(r) + ' G=' + str(g) + ' B=' + str(b)
+        Returns:
+            str: Closest color name.
+        """
+        color_diffs = [(abs(r - int(row['R'])) + abs(g - int(row['G'])) + abs(b - int(row['B'])), row['color_name'])
+                       for index, row in self.csv.iterrows()]
+        return min(color_diffs, key=lambda x: x[0])[1]
 
-                # cv2.putText(img,text,start,font(0-7),fontScale,color,thickness,lineType )
-                cv2.putText(self.image, text, (50, 50), 2, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
+    def draw_function(self, event, x, y, flags, param):
+        """
+        Mouse event handler to track pixel coordinates and RGB values.
 
-                # For very light colours we will display text in black colour
-                if (r + g + b >= 600):
-                    cv2.putText(self.image, text, (50, 50), 2, 0.8, (0, 0, 0), 2, cv2.LINE_AA)
+        Args:
+            event: Mouse event type.
+            x (int): X-coordinate of the mouse cursor.
+            y (int): Y-coordinate of the mouse cursor.
+            flags: Additional flags.
+            param: Additional parameters.
+        """
+        if event == cv2.EVENT_MOUSEMOVE:
+            self.clicked = True
+            self.xpos = x
+            self.ypos = y
+            self.current_blue, self.current_green, self.current_red = self.img[y, x]
+            self.current_blue = int(self.current_blue)
+            self.current_green = int(self.current_green)
+            self.current_red = int(self.current_red)
 
-                hovered = True
+    def draw_rectangle(self):
+        """
+        Draw a rectangle on the image with the color of the clicked pixel.
+        """
+        cv2.rectangle(self.img, (20, 20), (750, 60), (self.current_blue, self.current_green, self.current_red), -1)
+
+    def get_color_text(self):
+        """
+        Get the color name and RGB values text.
+
+        Returns:
+            str: Text containing color name and RGB values.
+        """
+        text = f"{self.get_color_name(self.current_red, self.current_green, self.current_blue)} R={self.current_red} G={self.current_green} B={self.current_blue}"
+        return text
+
+    def draw_text(self, text):
+        """
+        Draw the color name and RGB values text on the image.
+
+        Args:
+            text (str): Text to be drawn.
+        """
+        color = (255, 255, 255) if self.current_red + self.current_green + self.current_blue < 600 else (0, 0, 0)
+        cv2.putText(self.img, text, (50, 50), 2, 0.8, color, 2, cv2.LINE_AA)
+
+    def update_image_display(self):
+        """
+        Update the displayed image.
+        """
+        cv2.imshow("image", self.img)
+
+    def handle_key_press(self):
+        """
+        Handle key press events.
+        """
+        key = cv2.waitKey(20) & 0xFF
+        if key == 27:  # Check for 'esc' key
+            self.close_windows()
+
+    def close_windows(self):
+        """
+        Close all OpenCV windows.
+        """
+        cv2.destroyAllWindows()
+
+    def run(self):
+        """
+        Run the color detection application loop.
+        """
+        while True:
+            self.update_image_display()
+            if self.clicked:
+                self.draw_rectangle()
+                text = self.get_color_text()
+                self.draw_text(text)
+                self.clicked = False
+
+            self.handle_key_press()  # Moved inside the loop
 
             # Break the loop when user hits 'esc' key
             if cv2.waitKey(20) & 0xFF == 27:
                 break
 
-        cv2.destroyAllWindows()
+        self.close_windows()    
 
 if __name__ == "__main__":
-    picture = ColourDetector("colorpic.jpg", "colors.csv")
-    picture.getColorName(100, 150, 200)
-    picture.draw_function(cv2.EVENT_MOUSEMOVE, 10, 20)
-    picture.open_window(50, 50)
+    ap = argparse.ArgumentParser()
+    ap.add_argument('-i', '--image', required=True, help="Image Path")
+    args = vars(ap.parse_args())
+    img_path = args['image']
+    colors_csv_path = 'colors.csv'
+
+    detector = ColorDetector(img_path, colors_csv_path)
+    detector.run()
+
+
+
+
+
+
